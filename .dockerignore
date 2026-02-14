@@ -1,0 +1,14 @@
+**/.git
+**/.gitignore
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/Client
+**/*.bat
+**/*.md
+**/*.txt
+**/CHANGELOG*
+**/README*
+**/GUIDE*
+**/.DS_Store

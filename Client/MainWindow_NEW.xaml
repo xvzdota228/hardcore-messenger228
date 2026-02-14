@@ -1,0 +1,573 @@
+<Window x:Class="HardcoreMessenger.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HARDCORE Messenger" 
+        Height="750" Width="1200"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterScreen"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+
+    <Window.Resources>
+        <!-- ТОЧНО КАК TELEGRAM - черная тема с фиолетовым градиентом -->
+        <SolidColorBrush x:Key="PrimaryBg" Color="#0E0E0E"/>
+        <SolidColorBrush x:Key="SecondaryBg" Color="#1C1C1E"/>
+        <SolidColorBrush x:Key="TertiaryBg" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="AccentPurple" Color="#8B5CF6"/>
+        <SolidColorBrush x:Key="AccentHover" Color="#7C3AED"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#8E8E93"/>
+        <SolidColorBrush x:Key="MessageIn" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="MessageOut" Color="#8B5CF6"/>
+        <SolidColorBrush x:Key="BorderColor" Color="#38383A"/>
+        <SolidColorBrush x:Key="OnlineGreen" Color="#34C759"/>
+        <SolidColorBrush x:Key="RedAccent" Color="#FF3B30"/>
+        
+        <!-- Фиолетовый градиент как в Telegram Premium -->
+        <LinearGradientBrush x:Key="PurpleGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#8B5CF6" Offset="0"/>
+            <GradientStop Color="#EC4899" Offset="1"/>
+        </LinearGradientBrush>
+        
+        <LinearGradientBrush x:Key="DarkGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#0E0E0E" Offset="0"/>
+            <GradientStop Color="#1C1C1E" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- Анимации -->
+        <Storyboard x:Key="FadeInAnimation">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" 
+                           From="0" To="1" Duration="0:0:0.3"/>
+        </Storyboard>
+
+        <!-- Стиль кнопок с фиолетовым градиентом -->
+        <Style x:Key="TelegramButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PurpleGradient}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="24,14"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#8B5CF6" Opacity="0.5" BlurRadius="20" ShadowDepth="0"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="border"
+                                                           Storyboard.TargetProperty="(Border.Effect).(DropShadowEffect.BlurRadius)"
+                                                           To="30" Duration="0:0:0.2"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль TextBox -->
+        <Style x:Key="TelegramTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource SecondaryBg}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Padding" Value="16,14"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="CaretBrush" Value="{StaticResource AccentPurple}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ScrollViewer x:Name="PART_ContentHost" 
+                                        Padding="{TemplateBinding Padding}"
+                                        VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource AccentPurple}"/>
+                                <Setter TargetName="border" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Стиль для списка контактов -->
+        <Style x:Key="ContactListBox" TargetType="ListBox">
+            <Setter Property="Background" Value="{StaticResource SecondaryBg}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        </Style>
+
+        <!-- Стиль элемента контакта -->
+        <Style x:Key="ContactItem" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}" 
+                                Padding="16,12"
+                                CornerRadius="8"
+                                Margin="8,2">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource TertiaryBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="border" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#1A8B5CF6" Offset="0"/>
+                                            <GradientStop Color="#1AEC4899" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="{StaticResource PrimaryBg}" 
+            CornerRadius="16"
+            BorderBrush="{StaticResource BorderColor}"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" Opacity="0.7" BlurRadius="30" ShadowDepth="0"/>
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="60"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Заголовок окна -->
+            <Border Grid.Row="0" 
+                    Background="{StaticResource SecondaryBg}" 
+                    CornerRadius="16,16,0,0"
+                    BorderBrush="{StaticResource BorderColor}"
+                    BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0">
+                        <!-- Логотип с градиентом -->
+                        <Border Width="32" Height="32" CornerRadius="8" Margin="0,0,12,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                    <GradientStop Color="#EC4899" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="⚡" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        
+                        <TextBlock Text="HARDCORE" 
+                                 FontSize="18" 
+                                 FontWeight="Bold"
+                                 Foreground="{StaticResource TextPrimary}"
+                                 VerticalAlignment="Center"/>
+                        
+                        <TextBlock x:Name="StatusText"
+                                 Text="Connecting..." 
+                                 FontSize="12" 
+                                 Foreground="{StaticResource TextSecondary}"
+                                 VerticalAlignment="Center"
+                                 Margin="16,0,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0">
+                        <Button Content="—" 
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                Foreground="{StaticResource TextPrimary}"
+                                BorderThickness="0"
+                                FontSize="20"
+                                Click="Minimize_Click"
+                                Cursor="Hand"/>
+                        <Button Content="☐" 
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                Foreground="{StaticResource TextPrimary}"
+                                BorderThickness="0"
+                                FontSize="16"
+                                Click="Maximize_Click"
+                                Cursor="Hand"/>
+                        <Button Content="✕" 
+                                Width="44" Height="44"
+                                Background="Transparent"
+                                Foreground="{StaticResource TextPrimary}"
+                                BorderThickness="0"
+                                FontSize="18"
+                                Click="Close_Click"
+                                Cursor="Hand">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="0,16,0,0">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource RedAccent}"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Основной контент -->
+            <Grid Grid.Row="1">
+                <!-- Окно входа -->
+                <Grid x:Name="LoginPanel" Visibility="Visible">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#0E0E0E" Offset="0"/>
+                            <GradientStop Color="#1C1C1E" Offset="0.5"/>
+                            <GradientStop Color="#2C2C2E" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
+
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="420">
+                        <!-- Логотип с анимированным градиентом -->
+                        <Border Width="100" Height="100" CornerRadius="50" HorizontalAlignment="Center" Margin="0,0,0,24">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#8B5CF6" Offset="0"/>
+                                    <GradientStop Color="#EC4899" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.Effect>
+                                <DropShadowEffect Color="#8B5CF6" Opacity="0.6" BlurRadius="30" ShadowDepth="0"/>
+                            </Border.Effect>
+                            <TextBlock Text="⚡" 
+                                     FontSize="60" 
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"/>
+                        </Border>
+                        
+                        <TextBlock Text="HARDCORE MESSENGER" 
+                                 FontSize="32" 
+                                 FontWeight="Bold"
+                                 Foreground="{StaticResource TextPrimary}"
+                                 HorizontalAlignment="Center"
+                                 Margin="0,0,0,8">
+                            <TextBlock.Effect>
+                                <DropShadowEffect Color="#8B5CF6" Opacity="0.3" BlurRadius="10" ShadowDepth="0"/>
+                            </TextBlock.Effect>
+                        </TextBlock>
+                        
+                        <TextBlock Text="Fast. Secure. Powerful." 
+                                 FontSize="15" 
+                                 Foreground="{StaticResource TextSecondary}"
+                                 HorizontalAlignment="Center"
+                                 Margin="0,0,0,48"/>
+
+                        <TextBlock Text="ENTER YOUR USERNAME" 
+                                 FontSize="13" 
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextSecondary}"
+                                 Margin="0,0,0,10"/>
+                        
+                        <TextBox x:Name="UsernameBox" 
+                                Style="{StaticResource TelegramTextBox}"
+                                Height="54"
+                                MaxLength="20"
+                                KeyDown="UsernameBox_KeyDown"/>
+
+                        <Button Content="START MESSAGING ➤" 
+                                Style="{StaticResource TelegramButton}"
+                                Height="54"
+                                Margin="0,20,0,0"
+                                Click="Login_Click"/>
+
+                        <TextBlock Text="Server: ws://localhost:8080" 
+                                 FontSize="11" 
+                                 Foreground="{StaticResource TextSecondary}"
+                                 HorizontalAlignment="Center"
+                                 Margin="0,24,0,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Главный интерфейс мессенджера -->
+                <Grid x:Name="ChatPanel" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="340"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Панель контактов -->
+                    <Border Grid.Column="0" 
+                            Background="{StaticResource SecondaryBg}"
+                            BorderBrush="{StaticResource BorderColor}"
+                            BorderThickness="0,0,1,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Поиск -->
+                            <Border Grid.Row="0" Padding="16,12" Background="{StaticResource TertiaryBg}">
+                                <TextBox Style="{StaticResource TelegramTextBox}" 
+                                       Height="44"
+                                       Text="🔍  Search..."/>
+                            </Border>
+
+                            <!-- Список контактов -->
+                            <ListBox x:Name="UsersList" 
+                                   Grid.Row="1"
+                                   Style="{StaticResource ContactListBox}"
+                                   ItemContainerStyle="{StaticResource ContactItem}"
+                                   SelectionChanged="UsersList_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Height="68">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="52"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Аватар с градиентом -->
+                                            <Border Grid.Column="0" 
+                                                  Width="48" Height="48"
+                                                  CornerRadius="24">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#8B5CF6" Offset="0"/>
+                                                        <GradientStop Color="#EC4899" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                                <TextBlock Text="{Binding Avatar}" 
+                                                         FontSize="20"
+                                                         FontWeight="Bold"
+                                                         Foreground="White"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"/>
+                                            </Border>
+
+                                            <!-- Имя и статус -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0">
+                                                <TextBlock Text="{Binding Username}" 
+                                                         FontSize="16"
+                                                         FontWeight="SemiBold"
+                                                         Foreground="{StaticResource TextPrimary}"/>
+                                                <TextBlock Text="{Binding StatusText}" 
+                                                         FontSize="13"
+                                                         Foreground="{StaticResource TextSecondary}"
+                                                         Margin="0,3,0,0"/>
+                                            </StackPanel>
+
+                                            <!-- Индикатор онлайн -->
+                                            <Border Grid.Column="2" 
+                                                   Width="12" Height="12"
+                                                   CornerRadius="6"
+                                                   Background="{StaticResource OnlineGreen}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"
+                                                   Visibility="{Binding OnlineVisibility}">
+                                                <Border.Effect>
+                                                    <DropShadowEffect Color="#34C759" Opacity="0.6" BlurRadius="8" ShadowDepth="0"/>
+                                                </Border.Effect>
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- Нижняя панель профиля -->
+                            <Border Grid.Row="2" 
+                                  Background="{StaticResource TertiaryBg}"
+                                  BorderBrush="{StaticResource BorderColor}"
+                                  BorderThickness="0,1,0,0"
+                                  Padding="16,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="40" Height="40" CornerRadius="20">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#8B5CF6" Offset="0"/>
+                                                <GradientStop Color="#EC4899" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <TextBlock x:Name="MyAvatarText" 
+                                                 Text="U"
+                                                 FontSize="18"
+                                                 FontWeight="Bold"
+                                                 Foreground="White"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                                        <TextBlock x:Name="MyUsernameText" 
+                                                 Text="Username"
+                                                 FontSize="14"
+                                                 FontWeight="SemiBold"
+                                                 Foreground="{StaticResource TextPrimary}"/>
+                                        <TextBlock Text="online" 
+                                                 FontSize="12"
+                                                 Foreground="{StaticResource OnlineGreen}"
+                                                 Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- Панель чата -->
+                    <Grid Grid.Column="1" x:Name="ChatArea">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="72"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Заголовок чата -->
+                        <Border Grid.Row="0" 
+                              Background="{StaticResource SecondaryBg}"
+                              BorderBrush="{StaticResource BorderColor}"
+                              BorderThickness="0,0,0,1"
+                              Padding="24,0">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="ChatUsername" 
+                                             Text="Select a contact to start messaging"
+                                             FontSize="17"
+                                             FontWeight="SemiBold"
+                                             Foreground="{StaticResource TextPrimary}"/>
+                                    <TextBlock x:Name="ChatStatus" 
+                                             Text=""
+                                             FontSize="13"
+                                             Foreground="{StaticResource TextSecondary}"
+                                             Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Область сообщений -->
+                        <ScrollViewer x:Name="MessagesScroll" 
+                                    Grid.Row="1"
+                                    VerticalScrollBarVisibility="Auto"
+                                    Background="{StaticResource PrimaryBg}"
+                                    Padding="24">
+                            <ItemsControl x:Name="MessagesPanel">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,6">
+                                            <Border Background="{Binding BubbleColor}"
+                                                  CornerRadius="14,14,14,4"
+                                                  Padding="14,10"
+                                                  MaxWidth="520"
+                                                  HorizontalAlignment="{Binding Alignment}">
+                                                <Border.Effect>
+                                                    <DropShadowEffect Color="Black" Opacity="0.15" BlurRadius="12" ShadowDepth="3"/>
+                                                </Border.Effect>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Content}" 
+                                                             FontSize="15"
+                                                             Foreground="White"
+                                                             TextWrapping="Wrap"
+                                                             LineHeight="20"/>
+                                                    <TextBlock Text="{Binding TimeString}" 
+                                                             FontSize="11"
+                                                             Foreground="#C0FFFFFF"
+                                                             HorizontalAlignment="Right"
+                                                             Margin="0,5,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- Панель ввода -->
+                        <Border Grid.Row="2" 
+                              Background="{StaticResource SecondaryBg}"
+                              BorderBrush="{StaticResource BorderColor}"
+                              BorderThickness="0,1,0,0"
+                              Padding="24,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="MessageBox" 
+                                       Grid.Column="0"
+                                       Style="{StaticResource TelegramTextBox}"
+                                       Height="54"
+                                       TextWrapping="Wrap"
+                                       AcceptsReturn="False"
+                                       KeyDown="MessageBox_KeyDown"
+                                       TextChanged="MessageBox_TextChanged"/>
+
+                                <Button Grid.Column="1" 
+                                      Content="SEND ➤" 
+                                      Style="{StaticResource TelegramButton}"
+                                      Height="54"
+                                      Margin="12,0,0,0"
+                                      Padding="32,0"
+                                      Click="Send_Click"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
