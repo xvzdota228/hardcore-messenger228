@@ -18,23 +18,23 @@ namespace HardcoreMessenger
     public partial class MainWindow : Window
     {
         // ============================================
-        // 🌐 НАСТРОЙКА СЕРВЕРА - ИЗМЕНИТЕ ЗДЕСЬ!
-        // ============================================
-        
-        // Для ЛОКАЛЬНОГО тестирования:
-        private const string SERVER_URL = "ws://localhost:8080";
-        
-        // Для ngrok (после запуска ngrok http 8080):
-        // private const string SERVER_URL = "wss://ВАШ-АДРЕС.ngrok.io";
-        
-        // Для Railway.app:
-        // private const string SERVER_URL = "wss://hardcore-messenger.up.railway.app";
-        
-        // Для Render.com:
-        // private const string SERVER_URL = "wss://hardcore-messenger.onrender.com";
-        
-        // Для вашего домашнего сервера (замените IP):
-        // private const string SERVER_URL = "ws://45.123.67.89:8080";
+// 🌐 НАСТРОЙКА СЕРВЕРА - ИЗМЕНИТЕ ЗДЕСЬ!
+// ============================================
+
+// Для ЛОКАЛЬНОГО тестирования:
+// private const string SERVER_URL = "ws://localhost:8080";
+
+// Для ngrok (после запуска ngrok http 8080):
+// private const string SERVER_URL = "wss://ВАШ-АДРЕС.ngrok.io";
+
+// Для Railway.app:
+private const string SERVER_URL = "wss://hardcore-messenger228-production.up.railway.app";
+
+// Для Render.com:
+// private const string SERVER_URL = "wss://hardcore-messenger.onrender.com";
+
+// Для вашего домашнего сервера (замените IP):
+// private const string SERVER_URL = "ws://45.123.67.89:8080";
         
         // ============================================
 

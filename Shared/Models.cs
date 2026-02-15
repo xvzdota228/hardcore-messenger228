@@ -59,7 +59,11 @@ namespace HardcoreMessenger.Shared
         GameInvite, // Приглашение в игру
         Payment, // Платёж/перевод
         Reminder, // Напоминание
-        Schedule // Запланированное сообщение
+        Schedule, // Запланированное сообщение
+        Register, // Регистрация нового пользователя
+        LoginAttempt, // Попытка входа
+        GetHistory, // Запрос истории сообщений
+        History // Ответ с историей сообщений
     }
 
     public class User

@@ -25,16 +25,20 @@ namespace HardcoreServer
     {
         private HttpListener _httpListener;
         private ConcurrentDictionary<string, ClientConnection> _clients = new ConcurrentDictionary<string, ClientConnection>();
-        private ConcurrentDictionary<string, List<Message>> _messageHistory = new ConcurrentDictionary<string, List<Message>>();
-        private ConcurrentDictionary<string, ProfileData> _userProfiles = new ConcurrentDictionary<string, ProfileData>();
+        private Database _database;
 
         public async Task Start()
         {
-            // Определяем порт (для Heroku/Railway используют переменную окружения PORT)
+            // Инициализация базы данных
+            string dbPath = Environment.GetEnvironmentVariable("DB_PATH") ?? "hardcore_messenger.db";
+            _database = new Database(dbPath);
+            
+            Console.WriteLine("[SERVER] ✓ Database initialized");
+
+            // Определяем порт
             var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
             
             _httpListener = new HttpListener();
-            // ВАЖНО: Слушаем ВСЕ IP адреса (не только localhost!)
             _httpListener.Prefixes.Add($"http://+:{port}/");
             
             try
@@ -45,7 +49,6 @@ namespace HardcoreServer
             {
                 Console.WriteLine($"[ERROR] Cannot start server on port {port}");
                 Console.WriteLine($"[ERROR] {ex.Message}");
-                Console.WriteLine("\nTry running as Administrator or use a different port.");
                 Console.ReadKey();
                 return;
             }
@@ -56,16 +59,13 @@ namespace HardcoreServer
     ╠═╣╠═╣╠╦╝ ║║║  ║ ║╠╦╝║╣   ╚═╗║╣ ╠╦╝╚╗╔╝║╣ ╠╦╝
     ╩ ╩╩ ╩╩╚══╩╝╚═╝╚═╝╩╚═╚═╝  ╚═╝╚═╝╩╚═ ╚╝ ╚═╝╩╚═
     
-    🌐 ONLINE EDITION - Доступен из интернета!
+    🌐 ONLINE EDITION v2.0 - С РЕГИСТРАЦИЕЙ И БД!
             ");
             Console.ResetColor();
             
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🚀 Server started on port {port}");
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🌐 Listening on ALL network interfaces");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 💾 Database: {dbPath}");
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 📡 Waiting for connections...\n");
-            
-            // Показываем IP адреса
-            ShowNetworkInfo(port);
 
             while (true)
             {
@@ -89,35 +89,6 @@ namespace HardcoreServer
             }
         }
 
-        private void ShowNetworkInfo(string port)
-        {
-            try
-            {
-                var hostName = Dns.GetHostName();
-                var addresses = Dns.GetHostAddresses(hostName);
-                
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("📍 Ваш сервер доступен по адресам:");
-                Console.ResetColor();
-                
-                Console.WriteLine($"   Локально:  ws://localhost:{port}");
-                
-                foreach (var addr in addresses.Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork))
-                {
-                    Console.WriteLine($"   Локальная сеть: ws://{addr}:{port}");
-                }
-                
-                Console.WriteLine("\n💡 Для доступа из интернета используйте:");
-                Console.WriteLine("   - ngrok: ngrok http " + port);
-                Console.WriteLine("   - Railway.app (автоматический публичный URL)");
-                Console.WriteLine("   - Ваш публичный IP + проброс портов\n");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[WARNING] Cannot get network info: {ex.Message}");
-            }
-        }
-
         private async Task ProcessWebSocketRequest(HttpListenerContext context)
         {
             WebSocketContext wsContext = null;
@@ -125,28 +96,23 @@ namespace HardcoreServer
             {
                 wsContext = await context.AcceptWebSocketAsync(null);
                 var webSocket = wsContext.WebSocket;
-                var username = context.Request.QueryString["username"] ?? $"User{_clients.Count + 1}";
+                var tempId = Guid.NewGuid().ToString();
 
                 var client = new ClientConnection
                 {
-                    Username = username,
+                    Username = null, // Будет установлен после авторизации
                     WebSocket = webSocket,
-                    Id = Guid.NewGuid().ToString(),
-                    IPAddress = context.Request.RemoteEndPoint?.Address.ToString()
+                    Id = tempId,
+                    IPAddress = context.Request.RemoteEndPoint?.Address.ToString(),
+                    IsAuthenticated = false
                 };
 
                 _clients.TryAdd(client.Id, client);
                 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✓ {username} connected from {client.IPAddress} (Total: {_clients.Count})");
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🔌 New connection from {client.IPAddress} (waiting for auth...)");
                 Console.ResetColor();
 
-                // Отправляем профили всех пользователей новому клиенту
-                await SendUserProfiles(client);
-                
-                // Обновляем список пользователей для всех
-                await BroadcastUserList();
-                
                 await ReceiveMessages(client);
             }
             catch (Exception ex)
@@ -157,24 +123,9 @@ namespace HardcoreServer
             }
         }
 
-        private async Task SendUserProfiles(ClientConnection newClient)
-        {
-            foreach (var profile in _userProfiles.Values)
-            {
-                var profileMsg = new Message
-                {
-                    Type = MessageType.ProfileUpdate,
-                    From = "System",
-                    To = newClient.Username,
-                    Content = JsonConvert.SerializeObject(profile)
-                };
-                await SendToClient(newClient, profileMsg);
-            }
-        }
-
         private async Task ReceiveMessages(ClientConnection client)
         {
-            var buffer = new byte[1024 * 16]; // 16KB буфер для изображений
+            var buffer = new byte[1024 * 16];
             
             try
             {
@@ -193,6 +144,34 @@ namespace HardcoreServer
 
                     if (message != null)
                     {
+                        // Обработка регистрации и входа (до авторизации)
+                        if (!client.IsAuthenticated)
+                        {
+                            if (message.Type == MessageType.Register)
+                            {
+                                await HandleRegistration(client, message);
+                                continue;
+                            }
+                            else if (message.Type == MessageType.LoginAttempt)
+                            {
+                                await HandleLogin(client, message);
+                                continue;
+                            }
+                            else
+                            {
+                                // Неавторизованный пользователь пытается что-то сделать
+                                var errorMsg = new Message
+                                {
+                                    Type = MessageType.LoginAttempt,
+                                    From = "System",
+                                    Content = "ERROR:NOT_AUTHENTICATED"
+                                };
+                                await SendToClient(client, errorMsg);
+                                continue;
+                            }
+                        }
+
+                        // Дальше только для авторизованных пользователей
                         message.From = client.Username;
                         message.Timestamp = DateTime.Now;
 
@@ -201,22 +180,158 @@ namespace HardcoreServer
                         Console.ResetColor();
 
                         await RouteMessage(message, client);
-                        
-                        // Сохраняем в историю (кроме служебных)
-                        if (message.Type == MessageType.Text)
-                        {
-                            var key = GetChatKey(message.From, message.To);
-                            if (!_messageHistory.ContainsKey(key))
-                                _messageHistory[key] = new List<Message>();
-                            _messageHistory[key].Add(message);
-                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] {client.Username}: {ex.Message}");
+                Console.WriteLine($"[ERROR] {client.Username ?? client.Id}: {ex.Message}");
                 await HandleDisconnect(client);
+            }
+        }
+
+        private async Task HandleRegistration(ClientConnection client, Message message)
+        {
+            string username = message.From;
+            string password = message.Content;
+
+            Console.WriteLine($"[AUTH] 📝 Registration attempt: {username}");
+
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            {
+                var response = new Message
+                {
+                    Type = MessageType.Register,
+                    From = "System",
+                    Content = "ERROR:INVALID_INPUT"
+                };
+                await SendToClient(client, response);
+                return;
+            }
+
+            bool success = _database.RegisterUser(username, password);
+
+            if (success)
+            {
+                // Регистрация успешна - автоматически логиним
+                client.Username = username;
+                client.IsAuthenticated = true;
+                
+                _database.CreateSession(client.Id, username, client.IPAddress);
+
+                var response = new Message
+                {
+                    Type = MessageType.Register,
+                    From = "System",
+                    Content = "SUCCESS"
+                };
+                await SendToClient(client, response);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[AUTH] ✓ User registered and logged in: {username}");
+                Console.ResetColor();
+
+                // Отправляем профиль пользователя
+                var profile = _database.GetUserProfile(username);
+                var profileMsg = new Message
+                {
+                    Type = MessageType.ProfileUpdate,
+                    From = "System",
+                    Content = JsonConvert.SerializeObject(profile)
+                };
+                await SendToClient(client, profileMsg);
+
+                // Отправляем список пользователей
+                await SendUserList(client);
+
+                // Уведомляем всех о новом пользователе
+                await BroadcastUserList();
+            }
+            else
+            {
+                var response = new Message
+                {
+                    Type = MessageType.Register,
+                    From = "System",
+                    Content = "ERROR:USERNAME_EXISTS"
+                };
+                await SendToClient(client, response);
+
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[AUTH] ✗ Registration failed: {username} (already exists)");
+                Console.ResetColor();
+            }
+        }
+
+        private async Task HandleLogin(ClientConnection client, Message message)
+        {
+            string username = message.From;
+            string password = message.Content;
+
+            Console.WriteLine($"[AUTH] 🔐 Login attempt: {username}");
+
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            {
+                var response = new Message
+                {
+                    Type = MessageType.LoginAttempt,
+                    From = "System",
+                    Content = "ERROR:INVALID_INPUT"
+                };
+                await SendToClient(client, response);
+                return;
+            }
+
+            bool success = _database.LoginUser(username, password);
+
+            if (success)
+            {
+                client.Username = username;
+                client.IsAuthenticated = true;
+                
+                _database.CreateSession(client.Id, username, client.IPAddress);
+
+                var response = new Message
+                {
+                    Type = MessageType.LoginAttempt,
+                    From = "System",
+                    Content = "SUCCESS"
+                };
+                await SendToClient(client, response);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[AUTH] ✓ User logged in: {username} from {client.IPAddress}");
+                Console.ResetColor();
+
+                // Отправляем профиль
+                var profile = _database.GetUserProfile(username);
+                var profileMsg = new Message
+                {
+                    Type = MessageType.ProfileUpdate,
+                    From = "System",
+                    Content = JsonConvert.SerializeObject(profile)
+                };
+                await SendToClient(client, profileMsg);
+
+                // Отправляем список пользователей
+                await SendUserList(client);
+
+                // Уведомляем всех об онлайне
+                await BroadcastUserList();
+            }
+            else
+            {
+                var response = new Message
+                {
+                    Type = MessageType.LoginAttempt,
+                    From = "System",
+                    Content = "ERROR:INVALID_CREDENTIALS"
+                };
+                await SendToClient(client, response);
+
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[AUTH] ✗ Login failed: {username} (invalid credentials)");
+                Console.ResetColor();
             }
         }
 
@@ -225,8 +340,13 @@ namespace HardcoreServer
             switch (message.Type)
             {
                 case MessageType.Text:
+                    // Сохраняем в БД
+                    _database.SaveMessage(message);
+                    
+                    // Отправляем получателю
                     await SendToUser(message.To, message);
-                    // Подтверждение
+                    
+                    // Подтверждение отправителю
                     var deliveryConfirm = new Message
                     {
                         Type = MessageType.Delivered,
@@ -237,39 +357,110 @@ namespace HardcoreServer
                     await SendToUser(message.From, deliveryConfirm);
                     break;
 
-                case MessageType.Typing:
-                    await SendToUser(message.To, message);
+                case MessageType.GetHistory:
+                    // Клиент запрашивает историю с пользователем
+                    var history = _database.GetMessageHistory(message.From, message.To, 100);
+                    var historyMsg = new Message
+                    {
+                        Type = MessageType.History,
+                        From = "System",
+                        To = message.From,
+                        Content = JsonConvert.SerializeObject(history)
+                    };
+                    await SendToClient(sender, historyMsg);
                     break;
 
                 case MessageType.Read:
+                    _database.MarkMessagesAsRead(message.To, message.From);
+                    await SendToUser(message.To, message);
+                    break;
+
+                case MessageType.Typing:
                     await SendToUser(message.To, message);
                     break;
 
                 case MessageType.ProfileUpdate:
                 case MessageType.AvatarUpdate:
-                    // Сохраняем профиль
-                    var profile = JsonConvert.DeserializeObject<ProfileData>(message.Content);
-                    _userProfiles[message.From] = profile;
-                    
-                    // Рассылаем всем
-                    await BroadcastProfileUpdate(message);
+                    var profileData = JsonConvert.DeserializeObject<ProfileData>(message.Content);
+                    _database.UpdateUserProfile(profileData);
+                    await BroadcastProfileUpdate(profileData);
                     break;
 
-                case MessageType.StatusUpdate:
-                    // Обновление статуса
-                    await BroadcastMessage(message);
-                    break;
-
-                case MessageType.Reaction:
-                    // Реакция на сообщение
+                default:
                     await SendToUser(message.To, message);
                     break;
             }
         }
 
+        private async Task SendUserList(ClientConnection client)
+        {
+            var onlineUsers = _clients.Values
+                .Where(c => c.IsAuthenticated && c.Username != null)
+                .Select(c => new User
+                {
+                    Username = c.Username,
+                    Status = UserStatus.Online,
+                    Avatar = _database.GetUserProfile(c.Username)?.Avatar ?? c.Username.Substring(0, 1).ToUpper(),
+                    AvatarType = "emoji"
+                })
+                .ToList();
+
+            var userListMsg = new Message
+            {
+                Type = MessageType.UserList,
+                From = "System",
+                To = client.Username,
+                Content = JsonConvert.SerializeObject(onlineUsers)
+            };
+
+            await SendToClient(client, userListMsg);
+        }
+
+        private async Task BroadcastUserList()
+        {
+            var onlineUsers = _clients.Values
+                .Where(c => c.IsAuthenticated && c.Username != null)
+                .Select(c => new User
+                {
+                    Username = c.Username,
+                    Status = UserStatus.Online,
+                    Avatar = _database.GetUserProfile(c.Username)?.Avatar ?? c.Username.Substring(0, 1).ToUpper(),
+                    AvatarType = "emoji"
+                })
+                .ToList();
+
+            var userListMsg = new Message
+            {
+                Type = MessageType.UserList,
+                From = "System",
+                Content = JsonConvert.SerializeObject(onlineUsers)
+            };
+
+            foreach (var client in _clients.Values.Where(c => c.IsAuthenticated))
+            {
+                await SendToClient(client, userListMsg);
+            }
+        }
+
+        private async Task BroadcastProfileUpdate(ProfileData profile)
+        {
+            var profileMsg = new Message
+            {
+                Type = MessageType.ProfileUpdate,
+                From = "System",
+                Content = JsonConvert.SerializeObject(profile)
+            };
+
+            foreach (var client in _clients.Values.Where(c => c.IsAuthenticated))
+            {
+                await SendToClient(client, profileMsg);
+            }
+        }
+
         private async Task SendToUser(string username, Message message)
         {
-            var client = _clients.Values.FirstOrDefault(c => c.Username == username);
+            var client = _clients.Values.FirstOrDefault(c => c.Username == username && c.IsAuthenticated);
+            
             if (client != null)
             {
                 await SendToClient(client, message);
@@ -278,96 +469,41 @@ namespace HardcoreServer
 
         private async Task SendToClient(ClientConnection client, Message message)
         {
-            if (client.WebSocket.State == WebSocketState.Open)
+            try
             {
-                try
+                if (client.WebSocket.State == WebSocketState.Open)
                 {
                     var json = JsonConvert.SerializeObject(message);
                     var bytes = Encoding.UTF8.GetBytes(json);
                     await client.WebSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[ERROR] Cannot send to {client.Username}: {ex.Message}");
-                }
             }
-        }
-
-        private async Task BroadcastProfileUpdate(Message message)
-        {
-            foreach (var client in _clients.Values)
+            catch (Exception ex)
             {
-                await SendToClient(client, message);
+                Console.WriteLine($"[ERROR] Cannot send to {client.Username ?? client.Id}: {ex.Message}");
             }
-        }
-
-        private async Task BroadcastMessage(Message message)
-        {
-            var json = JsonConvert.SerializeObject(message);
-            var bytes = Encoding.UTF8.GetBytes(json);
-
-            foreach (var client in _clients.Values)
-            {
-                if (client.WebSocket.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await client.WebSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                    catch { }
-                }
-            }
-        }
-
-        private async Task BroadcastUserList()
-        {
-            var userList = _clients.Values.Select(c =>
-            {
-                ProfileData profile = null;
-                _userProfiles.TryGetValue(c.Username, out profile);
-                
-                return new User
-                {
-                    Username = c.Username,
-                    Status = UserStatus.Online,
-                    LastSeen = DateTime.Now,
-                    Avatar = profile?.Avatar ?? c.Username.Substring(0, 1).ToUpper(),
-                    AvatarType = profile?.AvatarType ?? "emoji",
-                    Bio = profile?.Bio,
-                    CustomStatus = profile?.CustomStatus
-                };
-            }).ToList();
-
-            var message = new Message
-            {
-                Type = MessageType.UserList,
-                From = "System",
-                Content = JsonConvert.SerializeObject(userList)
-            };
-
-            await BroadcastMessage(message);
         }
 
         private async Task HandleDisconnect(ClientConnection client)
         {
             _clients.TryRemove(client.Id, out _);
             
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✗ {client.Username} disconnected from {client.IPAddress} (Total: {_clients.Count})");
-            Console.ResetColor();
+            if (client.IsAuthenticated)
+            {
+                _database.RemoveSession(client.Id);
+                
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ✗ {client.Username} disconnected (Total: {_clients.Count})");
+                Console.ResetColor();
 
-            await BroadcastUserList();
-            
-            if (client.WebSocket.State == WebSocketState.Open)
+                await BroadcastUserList();
+            }
+
+            try
             {
                 await client.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnected", CancellationToken.None);
             }
-        }
-
-        private string GetChatKey(string user1, string user2)
-        {
-            var users = new[] { user1, user2 }.OrderBy(u => u);
-            return string.Join("_", users);
+            catch { }
         }
     }
 
@@ -376,7 +512,7 @@ namespace HardcoreServer
         public string Id { get; set; }
         public string Username { get; set; }
         public WebSocket WebSocket { get; set; }
-        public DateTime ConnectedAt { get; set; } = DateTime.Now;
         public string IPAddress { get; set; }
+        public bool IsAuthenticated { get; set; }
     }
 }
