@@ -25,15 +25,18 @@ namespace HardcoreServer
     {
         private HttpListener _httpListener;
         private ConcurrentDictionary<string, ClientConnection> _clients = new ConcurrentDictionary<string, ClientConnection>();
-        private Database _database;
+        private DatabasePostgres _database;
 
         public async Task Start()
         {
-            // Инициализация базы данных
-            string dbPath = Environment.GetEnvironmentVariable("DB_PATH") ?? "hardcore_messenger.db";
-            _database = new Database(dbPath);
+            // Инициализация базы данных PostgreSQL
+            // Railway автоматически создаёт переменную DATABASE_URL
+            string connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
+                ?? throw new Exception("DATABASE_URL environment variable not set!");
             
-            Console.WriteLine("[SERVER] ✓ Database initialized");
+            _database = new DatabasePostgres(connectionString);
+            
+            Console.WriteLine("[SERVER] ✓ PostgreSQL database connected");
 
             // Определяем порт
             var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
@@ -64,7 +67,7 @@ namespace HardcoreServer
             Console.ResetColor();
             
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🚀 Server started on port {port}");
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 💾 Database: {dbPath}");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 💾 Database: PostgreSQL");
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 📡 Waiting for connections...\n");
 
             while (true)

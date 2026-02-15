@@ -18,23 +18,23 @@ namespace HardcoreMessenger
     public partial class MainWindow : Window
     {
         // ============================================
-// 🌐 НАСТРОЙКА СЕРВЕРА - ИЗМЕНИТЕ ЗДЕСЬ!
-// ============================================
-
-// Для ЛОКАЛЬНОГО тестирования:
-// private const string SERVER_URL = "ws://localhost:8080";
-
-// Для ngrok (после запуска ngrok http 8080):
-// private const string SERVER_URL = "wss://ВАШ-АДРЕС.ngrok.io";
-
-// Для Railway.app:
-private const string SERVER_URL = "wss://hardcore-messenger228-production.up.railway.app";
-
-// Для Render.com:
-// private const string SERVER_URL = "wss://hardcore-messenger.onrender.com";
-
-// Для вашего домашнего сервера (замените IP):
-// private const string SERVER_URL = "ws://45.123.67.89:8080";
+        // 🌐 НАСТРОЙКА СЕРВЕРА - ИЗМЕНИТЕ ЗДЕСЬ!
+        // ============================================
+        
+        // Для ЛОКАЛЬНОГО тестирования:
+        private const string SERVER_URL = "ws://localhost:8080";
+        
+        // Для ngrok (после запуска ngrok http 8080):
+        // private const string SERVER_URL = "wss://ВАШ-АДРЕС.ngrok.io";
+        
+        // Для Railway.app:
+        // private const string SERVER_URL = "wss://hardcore-messenger.up.railway.app";
+        
+        // Для Render.com:
+        // private const string SERVER_URL = "wss://hardcore-messenger.onrender.com";
+        
+        // Для вашего домашнего сервера (замените IP):
+        // private const string SERVER_URL = "ws://45.123.67.89:8080";
         
         // ============================================
 
@@ -47,11 +47,17 @@ private const string SERVER_URL = "wss://hardcore-messenger228-production.up.rai
         private bool _isTyping = false;
         private System.Windows.Threading.DispatcherTimer _typingTimer;
 
-        public MainWindow()
+        // НОВЫЙ КОНСТРУКТОР - принимает username и уже подключённый WebSocket
+        public MainWindow(string username, ClientWebSocket webSocket)
         {
             InitializeComponent();
             UsersList.ItemsSource = _users;
             MessagesPanel.ItemsSource = _messages;
+
+            // Сохраняем данные из окна входа
+            _username = username;
+            _webSocket = webSocket;
+            _cancellationTokenSource = new CancellationTokenSource();
 
             _typingTimer = new System.Windows.Threading.DispatcherTimer();
             _typingTimer.Interval = TimeSpan.FromSeconds(2);
@@ -61,8 +67,16 @@ private const string SERVER_URL = "wss://hardcore-messenger228-production.up.rai
                 _typingTimer.Stop();
             };
 
-            // Показываем адрес сервера в статусе
-            StatusText.Text = $"Server: {SERVER_URL}";
+            // Показываем что мы подключены
+            StatusText.Text = $"● Connected as {_username}";
+            StatusText.Foreground = new SolidColorBrush(Color.FromRgb(61, 237, 151));
+
+            // Прячем панель входа, показываем чат
+            LoginPanel.Visibility = Visibility.Collapsed;
+            ChatPanel.Visibility = Visibility.Visible;
+
+            // Запускаем прослушивание сообщений
+            _ = ReceiveMessages();
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -88,72 +102,8 @@ private const string SERVER_URL = "wss://hardcore-messenger228-production.up.rai
             WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         }
 
-        private async void Login_Click(object sender, RoutedEventArgs e)
-        {
-            await ConnectToServer();
-        }
-
-        private async void UsernameBox_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter)
-                await ConnectToServer();
-        }
-
-        private async Task ConnectToServer()
-        {
-            _username = UsernameBox.Text.Trim();
-            if (string.IsNullOrEmpty(_username))
-            {
-                MessageBox.Show("Please enter a username!", "HARDCORE", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                StatusText.Text = "Connecting...";
-                StatusText.Foreground = new SolidColorBrush(Color.FromRgb(255, 193, 7));
-                
-                _webSocket = new ClientWebSocket();
-                _cancellationTokenSource = new CancellationTokenSource();
-
-                // Подключаемся к серверу
-                var uri = new Uri($"{SERVER_URL}/?username={_username}");
-                
-                await _webSocket.ConnectAsync(uri, _cancellationTokenSource.Token);
-
-                StatusText.Text = "● Connected";
-                StatusText.Foreground = new SolidColorBrush(Color.FromRgb(61, 237, 151));
-
-                // Анимация переключения на чат
-                var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
-                fadeOut.Completed += (s, e) =>
-                {
-                    LoginPanel.Visibility = Visibility.Collapsed;
-                    ChatPanel.Visibility = Visibility.Visible;
-                    
-                    var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400));
-                    ChatPanel.BeginAnimation(OpacityProperty, fadeIn);
-                };
-                LoginPanel.BeginAnimation(OpacityProperty, fadeOut);
-
-                _ = ReceiveMessages();
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = "Connection failed";
-                StatusText.Foreground = new SolidColorBrush(Color.FromRgb(229, 57, 53));
-                
-                string errorMsg = $"Failed to connect to server!\n\n";
-                errorMsg += $"Server URL: {SERVER_URL}\n\n";
-                errorMsg += "Make sure:\n";
-                errorMsg += "1. Server is running\n";
-                errorMsg += "2. Server URL is correct\n";
-                errorMsg += "3. Firewall allows connection\n\n";
-                errorMsg += $"Error: {ex.Message}";
-                
-                MessageBox.Show(errorMsg, "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+        // СТАРЫЕ ФУНКЦИИ Login_Click, UsernameBox_KeyDown и ConnectToServer УДАЛЕНЫ
+        // Теперь вход происходит через LoginWindow!
 
         private async Task ReceiveMessages()
         {
